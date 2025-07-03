@@ -18,12 +18,16 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 
+import org.json.JSONObject
+
 class Detector(
     private val context: Context,
     private val modelPath: String,
     private val labelPath: String,
     private val detectorListener: DetectorListener,
 ) {
+    // 換名用
+    private var labelMap = mutableMapOf<String, String>()
 
     private var interpreter: Interpreter
     private var labels = mutableListOf<String>()
@@ -39,6 +43,8 @@ class Detector(
         .build()
 
     init {
+        // 讀 json 轉 Map
+        labelMap = loadLabelMap(context).toMutableMap() // 預設讀 assets/model1.json
         val compatList = CompatibilityList()
 
         val options = Interpreter.Options().apply{
@@ -88,7 +94,20 @@ class Detector(
             e.printStackTrace()
         }
     }
+    fun loadLabelMap(context: Context, fileName: String = "model1.json"): Map<String, String> {
+        val jsonString = context.assets.open(fileName).bufferedReader().use { it.readText() }
+        val jsonObject = JSONObject(jsonString)
 
+        val labelMap = mutableMapOf<String, String>()
+        val keys = jsonObject.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val obj = jsonObject.getJSONObject(key)
+            val chineseName = obj.getString("Chinese_Name")
+            labelMap[key] = chineseName
+        }
+        return labelMap
+    }
     fun restart(isGpu: Boolean) {
         interpreter.close()
 
@@ -115,7 +134,12 @@ class Detector(
     fun close() {
         interpreter.close()
     }
-
+    fun cropCenterSquare(bitmap: Bitmap): Bitmap {
+        val size = minOf(bitmap.width, bitmap.height)
+        val x = (bitmap.width - size) / 2
+        val y = (bitmap.height - size) / 2
+        return Bitmap.createBitmap(bitmap, x, y, size, size)
+    }
     fun detect(frame: Bitmap) {
         if (tensorWidth == 0) return
         if (tensorHeight == 0) return
@@ -124,7 +148,9 @@ class Detector(
 
         var inferenceTime = SystemClock.uptimeMillis()
 
-        val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        //val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        val cropped = cropCenterSquare(frame)
+        val resizedBitmap = Bitmap.createScaledBitmap(cropped, tensorWidth, tensorHeight, false)
 
         val tensorImage = TensorImage(INPUT_IMAGE_TYPE)
         tensorImage.load(resizedBitmap)
@@ -164,7 +190,8 @@ class Detector(
             }
 
             if (maxConf > CONFIDENCE_THRESHOLD) {
-                val clsName = labels[maxIdx]
+                val clsName_ = labels[maxIdx]
+                var clsName = labelMap[clsName_] ?: "未知類別"
                 val cx = array[c] // 0
                 val cy = array[c + numElements] // 1
                 val w = array[c + numElements * 2]
@@ -236,7 +263,8 @@ class Detector(
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.3F
+        //private const val CONFIDENCE_THRESHOLD = 0.3F
+        private const val CONFIDENCE_THRESHOLD = 0.2F
         private const val IOU_THRESHOLD = 0.5F
     }
 }

@@ -14,7 +14,12 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
     }
 
     buildTypes {
@@ -36,6 +41,11 @@ android {
 
     buildFeatures {
         viewBinding = true
+    }
+    packaging {
+        jniLibs {
+            excludes.add("**/libtensorflowlite_flex_jni.so")
+        }
     }
 }
 
